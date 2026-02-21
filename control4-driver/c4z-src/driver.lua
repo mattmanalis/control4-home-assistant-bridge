@@ -54,6 +54,19 @@ local function parse_id_list(raw)
   return ids
 end
 
+local function parse_ids_from_selector(raw)
+  local ids = {}
+  local seen = {}
+  for token in string.gmatch(tostring(raw or ""), "%d+") do
+    local id = tostring(tonumber(token))
+    if id and not seen[id] then
+      table.insert(ids, id)
+      seen[id] = true
+    end
+  end
+  return ids
+end
+
 local function update_runtime_properties()
   local v = VERSION
   if C4.GetDriverConfigInfo then
@@ -77,7 +90,12 @@ local function load_properties()
     DEFAULT_ROOM_NAME = "Control4"
   end
 
-  LIGHT_DEVICE_IDS = parse_id_list(Properties["Light Device IDs"])
+  local selector_ids = parse_ids_from_selector(Properties["Light Devices"])
+  if #selector_ids > 0 then
+    LIGHT_DEVICE_IDS = selector_ids
+  else
+    LIGHT_DEVICE_IDS = parse_id_list(Properties["Light Device IDs"])
+  end
   for _, id in ipairs(LIGHT_DEVICE_IDS) do
     if LIGHT_STATE[id] == nil then
       LIGHT_STATE[id] = { on = false, brightness = 0 }
@@ -378,7 +396,7 @@ function OnPropertyChanged(name)
   load_properties()
   debug_log("Property changed: " .. tostring(name))
 
-  if name == "Bridge ID" or name == "Shared Secret" or name == "Home Assistant Base URL" or name == "Light Device IDs" or name == "Default Room Name" then
+  if name == "Bridge ID" or name == "Shared Secret" or name == "Home Assistant Base URL" or name == "Light Device IDs" or name == "Light Devices" or name == "Default Room Name" then
     sync_to_ha()
   end
 end

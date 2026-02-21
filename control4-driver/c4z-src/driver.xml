@@ -5,11 +5,11 @@
   <name>Home Assistant Bridge</name>
   <model>Control4</model>
   <created>02/21/2026 20:55:00</created>
-  <modified>02/21/2026 21:28:00</modified>
+  <modified>02/21/2026 21:44:00</modified>
   <minimum_os_version>3.3.0</minimum_os_version>
   <auto_update>false</auto_update>
   <force_auto_update>false</force_auto_update>
-  <version>3</version>
+  <version>4</version>
 
   <small image_source="c4z">icons/device_sm.png</small>
   <large image_source="c4z">icons/device_lg.png</large>
@@ -68,6 +68,14 @@
         <readonly>false</readonly>
         <default></default>
         <description>Comma-separated Control4 Light device IDs to expose (example: 1234,5678)</description>
+      </property>
+      <property>
+        <name>Light Devices</name>
+        <type>DEVICE_SELECTOR</type>
+        <multiselect>True</multiselect>
+        <items>
+          <item>light_v2.c4i</item>
+        </items>
       </property>
       <property>
         <name>Default Room Name</name>
