@@ -54,10 +54,21 @@ class Control4BridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class Control4BridgeOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
     """Handle options for Control4 Bridge."""
 
+    def __init__(self, config_entry: config_entries.ConfigEntry | None = None) -> None:
+        """Initialize options flow with compatibility across HA call patterns."""
+        if config_entry is not None:
+            super().__init__(config_entry)
+        self._config_entry = config_entry
+
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Manage options."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
+
+        entry = self._config_entry
+        if entry is None:
+            entry = getattr(self, "config_entry", None)
+        options = entry.options if entry is not None else {}
 
         return self.async_show_form(
             step_id="init",
@@ -65,7 +76,7 @@ class Control4BridgeOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                 {
                     vol.Optional(
                         "command_batch_size",
-                        default=int(self.config_entry.options.get("command_batch_size", 25)),
+                        default=int(options.get("command_batch_size", 25)),
                     ): vol.All(vol.Coerce(int), vol.Range(min=1, max=100)),
                 }
             ),
