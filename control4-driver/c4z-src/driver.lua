@@ -15,6 +15,10 @@ local DEBUG_ENABLED = false
 local sync_timer = nil
 local poll_timer = nil
 local command_ack_buffer = {}
+local HTTP_OPTIONS = {
+  cookies_enable = false,
+  fail_on_error = false,
+}
 
 local function bool_string(value)
   return value == true and "true" or "false"
@@ -81,27 +85,36 @@ end
 
 local function post_json(url, body_table, on_done)
   local body = C4:JsonEncode(body_table)
-  local http = C4:url()
-    :OnDone(function(ticket_id, data, response_code, headers, err)
+  local ticket_id = C4:urlPost(
+    url,
+    body,
+    auth_headers(),
+    false,
+    function(tid, data, response_code, headers, err)
       if on_done then
-        on_done(ticket_id, data, response_code, headers, err)
+        on_done(tid, data, response_code, headers, err)
       end
-    end)
-    :Post(url, body, auth_headers())
+    end,
+    HTTP_OPTIONS
+  )
 
-  debug_log("POST scheduled ticket=" .. tostring(http:TicketId()) .. " url=" .. tostring(url))
+  debug_log("POST scheduled ticket=" .. tostring(ticket_id) .. " url=" .. tostring(url))
 end
 
 local function get_json(url, on_done)
-  local http = C4:url()
-    :OnDone(function(ticket_id, data, response_code, headers, err)
+  local ticket_id = C4:urlGet(
+    url,
+    auth_headers(),
+    false,
+    function(tid, data, response_code, headers, err)
       if on_done then
-        on_done(ticket_id, data, response_code, headers, err)
+        on_done(tid, data, response_code, headers, err)
       end
-    end)
-    :Get(url, auth_headers())
+    end,
+    HTTP_OPTIONS
+  )
 
-  debug_log("GET scheduled ticket=" .. tostring(http:TicketId()) .. " url=" .. tostring(url))
+  debug_log("GET scheduled ticket=" .. tostring(ticket_id) .. " url=" .. tostring(url))
 end
 
 local function sync_to_ha()
@@ -111,13 +124,16 @@ local function sync_to_ha()
     return
   end
 
-  post_json(HA_BASE_URL .. "/api/control4_bridge/sync", build_sync_payload(), function(_, _, code, _, err)
+  post_json(HA_BASE_URL .. "/api/control4_bridge/sync", build_sync_payload(), function(_, data, code, _, err)
     if code == 200 then
       C4:UpdateProperty("Bridge Status", "Connected")
       debug_log("Sync succeeded")
     else
       C4:UpdateProperty("Bridge Status", "Sync Error " .. tostring(code))
-      info_log("Sync failed HTTP=" .. tostring(code) .. " err=" .. tostring(err))
+      info_log("Sync failed code=" .. tostring(code) .. " err=" .. tostring(err))
+      if data and tostring(data) ~= "" then
+        info_log("Sync response body: " .. tostring(data))
+      end
     end
   end)
 end
@@ -165,7 +181,10 @@ local function poll_commands()
   local url = HA_BASE_URL .. "/api/control4_bridge/commands?bridge_id=" .. BRIDGE_ID .. "&limit=25"
   get_json(url, function(_, data, code, _, err)
     if code ~= 200 then
-      debug_log("Command poll failed HTTP=" .. tostring(code) .. " err=" .. tostring(err))
+      debug_log("Command poll failed code=" .. tostring(code) .. " err=" .. tostring(err))
+      if data and tostring(data) ~= "" then
+        debug_log("Command poll response body: " .. tostring(data))
+      end
       return
     end
 

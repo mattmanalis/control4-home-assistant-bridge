@@ -1,18 +1,57 @@
--- Control4 Home Assistant Bridge (MVP skeleton)
--- Drop this logic into your DriverWorks driver project and map real bindings/proxies.
+--[[=============================================================================
+  Control4 Home Assistant Bridge (MVP)
+  Dealer test build for Composer upload.
+===============================================================================]]
 
-PROTOCOL_VERSION = 1
-POLL_INTERVAL_SECONDS = 2
-SYNC_INTERVAL_SECONDS = 15
+local VERSION = "0.1.0"
+local POLL_INTERVAL_SECONDS = 2
+local SYNC_INTERVAL_SECONDS = 15
 
-local BRIDGE_ID = Properties["Bridge ID"] or "main_house"
-local SHARED_SECRET = Properties["Shared Secret"] or ""
-local HA_BASE_URL = Properties["Home Assistant Base URL"] or "http://homeassistant.local:8123"
+local BRIDGE_ID = "main_house"
+local SHARED_SECRET = ""
+local HA_BASE_URL = "http://homeassistant.local:8123"
+local DEBUG_ENABLED = false
 
+local sync_timer = nil
+local poll_timer = nil
 local command_ack_buffer = {}
+local HTTP_OPTIONS = {
+  cookies_enable = false,
+  fail_on_error = false,
+}
 
-local function log(msg)
+local function bool_string(value)
+  return value == true and "true" or "false"
+end
+
+local function debug_log(msg)
+  if DEBUG_ENABLED then
+    C4:DebugLog("[C4-HA Bridge] " .. tostring(msg))
+  end
+end
+
+local function info_log(msg)
   print("[C4-HA Bridge] " .. tostring(msg))
+end
+
+local function update_runtime_properties()
+  local v = VERSION
+  if C4.GetDriverConfigInfo then
+    local ok, configured = pcall(function() return C4:GetDriverConfigInfo("version") end)
+    if ok and configured then
+      v = configured
+    end
+  end
+
+  C4:UpdateProperty("Driver Version", tostring(v))
+  C4:UpdateProperty("Bridge Status", "Running")
+end
+
+local function load_properties()
+  BRIDGE_ID = Properties["Bridge ID"] or "main_house"
+  SHARED_SECRET = Properties["Shared Secret"] or ""
+  HA_BASE_URL = Properties["Home Assistant Base URL"] or "http://homeassistant.local:8123"
+  DEBUG_ENABLED = (Properties["Debug Mode"] == "On")
 end
 
 local function auth_headers()
@@ -23,75 +62,115 @@ local function auth_headers()
 end
 
 local function build_sync_payload()
-  -- TODO: Replace this with dynamic allowlisted devices from Composer properties/bindings.
-  local devices = {
-    {
-      device_id = "1001",
-      name = "Kitchen Pendants",
-      room = "Kitchen",
-      type = "light",
-      capabilities = {"on_off", "brightness"},
-      state = {
-        on = true,
-        brightness = 75,
-      }
-    }
-  }
-
+  -- TODO: Replace placeholder payload with allowlisted devices selected in Composer.
   return {
-    protocol_version = PROTOCOL_VERSION,
+    protocol_version = 1,
     bridge_id = BRIDGE_ID,
     timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
-    devices = devices,
+    devices = {
+      {
+        device_id = "1001",
+        name = "Kitchen Pendants",
+        room = "Kitchen",
+        type = "light",
+        capabilities = {"on_off", "brightness"},
+        state = {
+          on = true,
+          brightness = 75,
+        }
+      }
+    }
   }
 end
 
 local function post_json(url, body_table, on_done)
   local body = C4:JsonEncode(body_table)
-  C4:url()
-    :OnDone(function(ticketId, strData, responseCode, tHeaders)
+  local ticket_id = C4:urlPost(
+    url,
+    body,
+    auth_headers(),
+    false,
+    function(tid, data, response_code, headers, err)
       if on_done then
-        on_done(ticketId, strData, responseCode, tHeaders)
+        on_done(tid, data, response_code, headers, err)
       end
-    end)
-    :Post(url, body, auth_headers())
+    end,
+    HTTP_OPTIONS
+  )
+
+  debug_log("POST scheduled ticket=" .. tostring(ticket_id) .. " url=" .. tostring(url))
 end
 
 local function get_json(url, on_done)
-  C4:url()
-    :OnDone(function(ticketId, strData, responseCode, tHeaders)
+  local ticket_id = C4:urlGet(
+    url,
+    auth_headers(),
+    false,
+    function(tid, data, response_code, headers, err)
       if on_done then
-        on_done(ticketId, strData, responseCode, tHeaders)
+        on_done(tid, data, response_code, headers, err)
       end
-    end)
-    :Get(url, auth_headers())
+    end,
+    HTTP_OPTIONS
+  )
+
+  debug_log("GET scheduled ticket=" .. tostring(ticket_id) .. " url=" .. tostring(url))
 end
 
 local function sync_to_ha()
   if SHARED_SECRET == "" then
-    log("Shared Secret not configured")
+    C4:UpdateProperty("Bridge Status", "Missing Shared Secret")
+    debug_log("Skipping sync: shared secret missing")
     return
   end
 
-  local payload = build_sync_payload()
-  post_json(HA_BASE_URL .. "/api/control4_bridge/sync", payload, function(_, data, code)
-    if code ~= 200 then
-      log("Sync failed HTTP " .. tostring(code))
-      return
+  post_json(HA_BASE_URL .. "/api/control4_bridge/sync", build_sync_payload(), function(_, data, code, _, err)
+    if code == 200 then
+      C4:UpdateProperty("Bridge Status", "Connected")
+      debug_log("Sync succeeded")
+    else
+      C4:UpdateProperty("Bridge Status", "Sync Error " .. tostring(code))
+      info_log("Sync failed code=" .. tostring(code) .. " err=" .. tostring(err))
+      if data and tostring(data) ~= "" then
+        info_log("Sync response body: " .. tostring(data))
+      end
     end
-    log("Sync succeeded")
   end)
 end
 
 local function execute_command(command)
-  -- TODO: Map command.action to real C4 proxy/device commands.
-  -- command fields: command_id, device_id, action, params
-  log("Executing command " .. tostring(command.command_id) .. " action=" .. tostring(command.action))
+  -- TODO: Map these actions to real C4 proxy/device operations.
+  local action = tostring(command.action or "")
+  local command_id = tostring(command.command_id or "")
+  local device_id = tostring(command.device_id or "")
+
+  debug_log("Execute command_id=" .. command_id .. " device_id=" .. device_id .. " action=" .. action)
+
   table.insert(command_ack_buffer, {
-    command_id = command.command_id,
+    command_id = command_id,
     status = "success",
-    message = "Executed",
+    message = "Executed in MVP bridge stub",
   })
+end
+
+local function send_ack_batch()
+  if #command_ack_buffer == 0 then
+    return
+  end
+
+  local payload = {
+    bridge_id = BRIDGE_ID,
+    acks = command_ack_buffer,
+  }
+
+  post_json(HA_BASE_URL .. "/api/control4_bridge/ack", payload, function(_, _, code, _, err)
+    if code == 200 then
+      command_ack_buffer = {}
+      debug_log("Command ack succeeded")
+    else
+      info_log("Ack failed HTTP=" .. tostring(code) .. " err=" .. tostring(err))
+    end
+  end)
 end
 
 local function poll_commands()
@@ -100,59 +179,89 @@ local function poll_commands()
   end
 
   local url = HA_BASE_URL .. "/api/control4_bridge/commands?bridge_id=" .. BRIDGE_ID .. "&limit=25"
-  get_json(url, function(_, data, code)
+  get_json(url, function(_, data, code, _, err)
     if code ~= 200 then
-      log("Command poll failed HTTP " .. tostring(code))
+      debug_log("Command poll failed code=" .. tostring(code) .. " err=" .. tostring(err))
+      if data and tostring(data) ~= "" then
+        debug_log("Command poll response body: " .. tostring(data))
+      end
       return
     end
 
     local ok, decoded = pcall(function()
       return C4:JsonDecode(data)
     end)
+
     if not ok or type(decoded) ~= "table" then
-      log("Failed to decode command payload")
+      info_log("Failed to decode command payload")
       return
     end
 
     local commands = decoded.commands or {}
+    if type(commands) ~= "table" then
+      return
+    end
+
     for _, cmd in ipairs(commands) do
       execute_command(cmd)
     end
 
-    if #command_ack_buffer > 0 then
-      local ack_payload = {
-        bridge_id = BRIDGE_ID,
-        acks = command_ack_buffer,
-      }
-
-      post_json(HA_BASE_URL .. "/api/control4_bridge/ack", ack_payload, function(_, _, ack_code)
-        if ack_code == 200 then
-          command_ack_buffer = {}
-        else
-          log("Ack failed HTTP " .. tostring(ack_code))
-        end
-      end)
-    end
+    send_ack_batch()
   end)
 end
 
-function OnDriverInit()
-  log("Driver init")
-  C4:SetTimer(SYNC_INTERVAL_SECONDS * 1000, function()
+local function schedule_timers()
+  if sync_timer then
+    sync_timer:Cancel()
+  end
+  if poll_timer then
+    poll_timer:Cancel()
+  end
+
+  sync_timer = C4:SetTimer(SYNC_INTERVAL_SECONDS * 1000, function()
     sync_to_ha()
   end, true)
 
-  C4:SetTimer(POLL_INTERVAL_SECONDS * 1000, function()
+  poll_timer = C4:SetTimer(POLL_INTERVAL_SECONDS * 1000, function()
     poll_commands()
   end, true)
+
+  debug_log("Timers started sync=" .. tostring(SYNC_INTERVAL_SECONDS) .. "s poll=" .. tostring(POLL_INTERVAL_SECONDS) .. "s")
+end
+
+local function force_sync_command()
+  sync_to_ha()
+end
+
+local function force_poll_command()
+  poll_commands()
+end
+
+function OnDriverLateInit()
+  load_properties()
+  update_runtime_properties()
+  schedule_timers()
+  info_log("Driver initialized")
 end
 
 function OnPropertyChanged(name)
-  if name == "Bridge ID" then
-    BRIDGE_ID = Properties["Bridge ID"]
-  elseif name == "Shared Secret" then
-    SHARED_SECRET = Properties["Shared Secret"]
-  elseif name == "Home Assistant Base URL" then
-    HA_BASE_URL = Properties["Home Assistant Base URL"]
+  load_properties()
+  debug_log("Property changed: " .. tostring(name))
+  debug_log("Debug Mode=" .. bool_string(DEBUG_ENABLED))
+
+  if name == "Bridge ID" or name == "Shared Secret" or name == "Home Assistant Base URL" then
+    sync_to_ha()
   end
+end
+
+function ExecuteCommand(strCommand, tParams)
+  if strCommand == "ForceSync" then
+    force_sync_command()
+  elseif strCommand == "ForcePoll" then
+    force_poll_command()
+  end
+end
+
+function ReceivedFromProxy(idBinding, strCommand, tParams)
+  debug_log("ReceivedFromProxy binding=" .. tostring(idBinding) .. " command=" .. tostring(strCommand))
 end
