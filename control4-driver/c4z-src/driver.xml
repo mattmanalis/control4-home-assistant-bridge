@@ -1,0 +1,117 @@
+<devicedata>
+  <copyright>Copyright 2026 Matt Manalis. All rights reserved.</copyright>
+  <creator>Matt Manalis</creator>
+  <manufacturer>Matt Manalis</manufacturer>
+  <name>Home Assistant Bridge</name>
+  <model>Control4</model>
+  <created>02/21/2026 20:55:00</created>
+  <modified>02/21/2026 20:55:00</modified>
+  <minimum_os_version>3.3.0</minimum_os_version>
+  <auto_update>false</auto_update>
+  <force_auto_update>false</force_auto_update>
+  <version>1</version>
+
+  <small image_source="c4z">icons/device_sm.png</small>
+  <large image_source="c4z">icons/device_lg.png</large>
+  <control>lua_gen</control>
+  <controlmethod>other</controlmethod>
+  <driver>DriverWorks</driver>
+
+  <proxies>
+    <proxy proxybindingid="5001" name="Home Assistant Bridge" primary="True" image_source="c4z" large_image="icons/device_lg.png" small_image="icons/device_sm.png">uibutton</proxy>
+  </proxies>
+
+  <config>
+    <documentation file="www/documentation.rtf"/>
+    <script file="driver.lua"/>
+    <actions/>
+    <properties>
+      <property>
+        <name>Driver Name</name>
+        <type>STRING</type>
+        <readonly>true</readonly>
+        <default>Control4 Home Assistant Bridge</default>
+      </property>
+      <property>
+        <name>Driver Version</name>
+        <type>STRING</type>
+        <readonly>true</readonly>
+        <default></default>
+      </property>
+      <property>
+        <name>Bridge Status</name>
+        <type>STRING</type>
+        <readonly>true</readonly>
+        <default>Starting</default>
+      </property>
+      <property>
+        <name>Bridge ID</name>
+        <type>STRING</type>
+        <readonly>false</readonly>
+        <default>main_house</default>
+      </property>
+      <property>
+        <name>Shared Secret</name>
+        <type>STRING</type>
+        <readonly>false</readonly>
+        <default></default>
+      </property>
+      <property>
+        <name>Home Assistant Base URL</name>
+        <type>STRING</type>
+        <readonly>false</readonly>
+        <default>http://homeassistant.local:8123</default>
+      </property>
+      <property>
+        <name>Debug Mode</name>
+        <type>LIST</type>
+        <items>
+          <item>Off</item>
+          <item>On</item>
+        </items>
+        <default>Off</default>
+        <readonly>false</readonly>
+      </property>
+    </properties>
+    <commands>
+      <command>
+        <name>ForceSync</name>
+        <description>Send an immediate sync payload to Home Assistant.</description>
+      </command>
+      <command>
+        <name>ForcePoll</name>
+        <description>Poll Home Assistant command queue immediately.</description>
+      </command>
+    </commands>
+  </config>
+
+  <capabilities>
+    <navigator_display_option proxybindingid="5001">
+      <display_icons>
+        <Icon height="1024" width="1024">controller://driver/home_assistant_bridge/icons/device/experience_1024.png</Icon>
+        <Icon height="512" width="512">controller://driver/home_assistant_bridge/icons/device/experience_512.png</Icon>
+        <Icon height="300" width="300">controller://driver/home_assistant_bridge/icons/device/experience_300.png</Icon>
+        <Icon height="90" width="90">controller://driver/home_assistant_bridge/icons/device/experience_90.png</Icon>
+        <Icon height="70" width="70">controller://driver/home_assistant_bridge/icons/device/experience_70.png</Icon>
+      </display_icons>
+    </navigator_display_option>
+  </capabilities>
+
+  <connections>
+    <connection>
+      <id>5001</id>
+      <facing>6</facing>
+      <connectionname>UIBUTTON</connectionname>
+      <type>2</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>UIBUTTON</classname>
+        </class>
+      </classes>
+    </connection>
+  </connections>
+</devicedata>

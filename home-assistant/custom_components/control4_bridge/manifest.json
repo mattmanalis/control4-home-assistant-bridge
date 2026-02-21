@@ -1,0 +1,10 @@
+{
+  "domain": "control4_bridge",
+  "name": "Control4 Bridge",
+  "codeowners": ["@local"],
+  "config_flow": true,
+  "documentation": "https://example.local/control4_bridge",
+  "iot_class": "local_push",
+  "requirements": [],
+  "version": "0.1.0"
+}
