@@ -18,6 +18,7 @@ This repository contains a starter architecture to build a **dealer-managed Cont
 - `control4-driver/lua/c4_home_assistant_bridge.lua` - DriverWorks Lua starter
 - `control4-driver/home_assistant_bridge_control4_v0.1.0.c4z` - initial Control4 test package
 - `control4-driver/home_assistant_bridge_control4_v0.1.1.c4z` - improved HTTP diagnostics and transport handling
+- `control4-driver/home_assistant_bridge_control4_v0.2.0.c4z` - lights MVP (allowlist + light command mapping)
 - `home-assistant/custom_components/control4_bridge/` - HA custom integration starter
 - `custom_components/control4_bridge/` - HACS-compatible integration path (repo root)
 - `hacs.json` - HACS metadata
@@ -36,5 +37,5 @@ Start with `docs/SETUP.md`, then use `docs/MVP_CHECKLIST.md` for phased hardenin
 
 ## Upload Targets
 
-- Control4 Composer import file: `control4-driver/home_assistant_bridge_control4_v0.1.1.c4z`
+- Control4 Composer import file: `control4-driver/home_assistant_bridge_control4_v0.2.0.c4z`
 - HACS repository content root: `custom_components/control4_bridge`

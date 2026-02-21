@@ -18,6 +18,8 @@ Create driver properties in Composer/Driver XML that match:
 - `Bridge ID`
 - `Shared Secret`
 - `Home Assistant Base URL` (example: `http://192.168.1.10:8123`)
+- `Light Device IDs` (comma-separated Control4 light IDs, example: `1234,5678`)
+- `Default Room Name` (optional room label shown in HA)
 
 ## 3) First connectivity test
 

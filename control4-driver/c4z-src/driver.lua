@@ -1,9 +1,8 @@
 --[[=============================================================================
-  Control4 Home Assistant Bridge (MVP)
-  Dealer test build for Composer upload.
+  Control4 Home Assistant Bridge (Lights MVP)
 ===============================================================================]]
 
-local VERSION = "0.1.0"
+local VERSION = "0.2.0"
 local POLL_INTERVAL_SECONDS = 2
 local SYNC_INTERVAL_SECONDS = 15
 
@@ -11,6 +10,10 @@ local BRIDGE_ID = "main_house"
 local SHARED_SECRET = ""
 local HA_BASE_URL = "http://homeassistant.local:8123"
 local DEBUG_ENABLED = false
+local DEFAULT_ROOM_NAME = "Control4"
+
+local LIGHT_DEVICE_IDS = {}
+local LIGHT_STATE = {}
 
 local sync_timer = nil
 local poll_timer = nil
@@ -20,10 +23,6 @@ local HTTP_OPTIONS = {
   fail_on_error = false,
 }
 
-local function bool_string(value)
-  return value == true and "true" or "false"
-end
-
 local function debug_log(msg)
   if DEBUG_ENABLED then
     C4:DebugLog("[C4-HA Bridge] " .. tostring(msg))
@@ -32,6 +31,27 @@ end
 
 local function info_log(msg)
   print("[C4-HA Bridge] " .. tostring(msg))
+end
+
+local function trim(s)
+  return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function parse_id_list(raw)
+  local ids = {}
+  local seen = {}
+  for token in string.gmatch(tostring(raw or ""), "[^,]+") do
+    local cleaned = trim(token)
+    local numeric = tonumber(cleaned)
+    if numeric ~= nil then
+      cleaned = tostring(math.floor(numeric))
+      if not seen[cleaned] then
+        table.insert(ids, cleaned)
+        seen[cleaned] = true
+      end
+    end
+  end
+  return ids
 end
 
 local function update_runtime_properties()
@@ -52,6 +72,19 @@ local function load_properties()
   SHARED_SECRET = Properties["Shared Secret"] or ""
   HA_BASE_URL = Properties["Home Assistant Base URL"] or "http://homeassistant.local:8123"
   DEBUG_ENABLED = (Properties["Debug Mode"] == "On")
+  DEFAULT_ROOM_NAME = trim(Properties["Default Room Name"] or "Control4")
+  if DEFAULT_ROOM_NAME == "" then
+    DEFAULT_ROOM_NAME = "Control4"
+  end
+
+  LIGHT_DEVICE_IDS = parse_id_list(Properties["Light Device IDs"])
+  for _, id in ipairs(LIGHT_DEVICE_IDS) do
+    if LIGHT_STATE[id] == nil then
+      LIGHT_STATE[id] = { on = false, brightness = 0 }
+    end
+  end
+
+  debug_log("Loaded " .. tostring(#LIGHT_DEVICE_IDS) .. " light device IDs")
 end
 
 local function auth_headers()
@@ -61,25 +94,33 @@ local function auth_headers()
   }
 end
 
+local function light_name_from_id(device_id)
+  return "C4 Light " .. tostring(device_id)
+end
+
 local function build_sync_payload()
-  -- TODO: Replace placeholder payload with allowlisted devices selected in Composer.
+  local devices = {}
+
+  for _, device_id in ipairs(LIGHT_DEVICE_IDS) do
+    local state = LIGHT_STATE[device_id] or { on = false, brightness = 0 }
+    table.insert(devices, {
+      device_id = tostring(device_id),
+      name = light_name_from_id(device_id),
+      room = DEFAULT_ROOM_NAME,
+      type = "light",
+      capabilities = {"on_off", "brightness"},
+      state = {
+        on = state.on == true,
+        brightness = tonumber(state.brightness) or 0,
+      },
+    })
+  end
+
   return {
     protocol_version = 1,
     bridge_id = BRIDGE_ID,
     timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
-    devices = {
-      {
-        device_id = "1001",
-        name = "Kitchen Pendants",
-        room = "Kitchen",
-        type = "light",
-        capabilities = {"on_off", "brightness"},
-        state = {
-          on = true,
-          brightness = 75,
-        }
-      }
-    }
+    devices = devices,
   }
 end
 
@@ -138,18 +179,107 @@ local function sync_to_ha()
   end)
 end
 
+local function send_to_device(device_id, command, params)
+  if C4.SendToDevice == nil then
+    return false, "C4:SendToDevice unavailable"
+  end
+
+  local numeric_id = tonumber(device_id)
+  local target = numeric_id or device_id
+  local ok, err = pcall(function()
+    C4:SendToDevice(target, command, params or {})
+  end)
+
+  if not ok then
+    return false, tostring(err)
+  end
+  return true, "sent"
+end
+
+local function clamp_percent(v)
+  local n = tonumber(v) or 0
+  if n < 0 then return 0 end
+  if n > 100 then return 100 end
+  return math.floor(n + 0.5)
+end
+
+local function handle_light_command(device_id, action, params)
+  local state = LIGHT_STATE[device_id] or { on = false, brightness = 0 }
+  LIGHT_STATE[device_id] = state
+
+  if action == "turn_off" then
+    local ok, err = send_to_device(device_id, "OFF", {})
+    if ok then
+      state.on = false
+      state.brightness = 0
+    end
+    return ok, err
+  end
+
+  if action == "turn_on" then
+    local brightness = nil
+    if type(params) == "table" and params.brightness ~= nil then
+      brightness = clamp_percent(params.brightness)
+    end
+
+    if brightness ~= nil then
+      local ok_level = false
+      local err_level = ""
+      local tries = {
+        { cmd = "RAMP_TO_LEVEL", args = { LEVEL = tostring(brightness), RATE = "0" } },
+        { cmd = "SET_LEVEL", args = { LEVEL = tostring(brightness) } },
+      }
+
+      for _, attempt in ipairs(tries) do
+        local ok, err = send_to_device(device_id, attempt.cmd, attempt.args)
+        if ok then
+          ok_level = true
+          break
+        end
+        err_level = tostring(err)
+      end
+
+      if not ok_level then
+        return false, "brightness command failed: " .. err_level
+      end
+
+      state.on = brightness > 0
+      state.brightness = brightness
+      return true, "brightness set"
+    end
+
+    local ok, err = send_to_device(device_id, "ON", {})
+    if ok then
+      state.on = true
+      if (tonumber(state.brightness) or 0) == 0 then
+        state.brightness = 100
+      end
+    end
+    return ok, err
+  end
+
+  return false, "unsupported action for light"
+end
+
 local function execute_command(command)
-  -- TODO: Map these actions to real C4 proxy/device operations.
   local action = tostring(command.action or "")
   local command_id = tostring(command.command_id or "")
   local device_id = tostring(command.device_id or "")
+  local params = command.params
 
   debug_log("Execute command_id=" .. command_id .. " device_id=" .. device_id .. " action=" .. action)
 
+  local ok = false
+  local message = "unsupported device"
+
+  if LIGHT_STATE[device_id] ~= nil then
+    ok, message = handle_light_command(device_id, action, params)
+  end
+
   table.insert(command_ack_buffer, {
     command_id = command_id,
-    status = "success",
-    message = "Executed in MVP bridge stub",
+    status = ok and "success" or "error",
+    message = tostring(message),
   })
 end
 
@@ -168,7 +298,7 @@ local function send_ack_batch()
       command_ack_buffer = {}
       debug_log("Command ack succeeded")
     else
-      info_log("Ack failed HTTP=" .. tostring(code) .. " err=" .. tostring(err))
+      info_log("Ack failed code=" .. tostring(code) .. " err=" .. tostring(err))
     end
   end)
 end
@@ -247,9 +377,8 @@ end
 function OnPropertyChanged(name)
   load_properties()
   debug_log("Property changed: " .. tostring(name))
-  debug_log("Debug Mode=" .. bool_string(DEBUG_ENABLED))
 
-  if name == "Bridge ID" or name == "Shared Secret" or name == "Home Assistant Base URL" then
+  if name == "Bridge ID" or name == "Shared Secret" or name == "Home Assistant Base URL" or name == "Light Device IDs" or name == "Default Room Name" then
     sync_to_ha()
   end
 end
