@@ -9,6 +9,14 @@ from typing import Any
 from .models import BridgeCommand, BridgeDevice
 
 
+def _normalize_maybe_array(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, dict):
+        return [value[key] for key in sorted(value.keys(), key=lambda k: int(k) if str(k).isdigit() else str(k))]
+    return []
+
+
 class BridgeStore:
     """In-memory bridge state and command queue."""
 
@@ -31,8 +39,8 @@ class BridgeStore:
                 name=str(raw.get("name", device_id)),
                 room=str(raw.get("room", "")),
                 device_type=device_type,
-                capabilities=list(raw.get("capabilities", [])),
-                state=dict(raw.get("state", {})),
+                capabilities=_normalize_maybe_array(raw.get("capabilities", [])),
+                state=raw.get("state", {}) if isinstance(raw.get("state", {}), dict) else {},
             )
             accepted += 1
 

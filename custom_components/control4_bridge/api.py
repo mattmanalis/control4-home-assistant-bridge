@@ -22,6 +22,18 @@ from .const import (
 from .store import BridgeStore
 
 
+def _normalize_maybe_array(value: Any) -> list[Any] | None:
+    """Normalize list-like payloads that may arrive as dicts with numeric keys."""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, dict):
+        normalized: list[Any] = []
+        for key in sorted(value.keys(), key=lambda k: int(k) if str(k).isdigit() else str(k)):
+            normalized.append(value[key])
+        return normalized
+    return None
+
+
 class _BridgeBaseView(HomeAssistantView):
     """Shared behavior for bridge views."""
 
@@ -67,8 +79,8 @@ class Control4SyncView(_BridgeBaseView):
         if body.get(ATTR_PROTOCOL_VERSION) != PROTO_VERSION:
             return self.json({"ok": False, "error": "unsupported_protocol"}, status_code=HTTPStatus.BAD_REQUEST)
 
-        devices = body.get("devices", [])
-        if not isinstance(devices, list):
+        devices = _normalize_maybe_array(body.get("devices", []))
+        if devices is None:
             return self.json({"ok": False, "error": "invalid_devices"}, status_code=HTTPStatus.BAD_REQUEST)
 
         accepted = store.upsert_devices(devices)
