@@ -27,11 +27,20 @@ class _BridgeBaseView(HomeAssistantView):
 
     requires_auth = False
 
+    def _domain_data(self, hass: HomeAssistant) -> dict[str, Any] | None:
+        return hass.data.get(DOMAIN)
+
     def _get_store(self, hass: HomeAssistant) -> BridgeStore:
-        return hass.data[DOMAIN]["store"]
+        domain_data = self._domain_data(hass)
+        if not domain_data or "store" not in domain_data:
+            raise KeyError("store_unavailable")
+        return domain_data["store"]
 
     def _is_authorized(self, hass: HomeAssistant, headers: dict[str, str]) -> bool:
-        expected = hass.data[DOMAIN]["shared_secret"]
+        domain_data = self._domain_data(hass)
+        if not domain_data:
+            return False
+        expected = domain_data.get("shared_secret", "")
         provided = headers.get("X-C4-Bridge-Secret", "")
         return bool(provided) and provided == expected
 
@@ -44,6 +53,8 @@ class Control4SyncView(_BridgeBaseView):
 
     async def post(self, request):
         hass = request.app["hass"]
+        if not self._domain_data(hass):
+            return self.json({"ok": False, "error": "integration_not_ready"}, status_code=HTTPStatus.SERVICE_UNAVAILABLE)
         if not self._is_authorized(hass, request.headers):
             return self.json({"ok": False, "error": "unauthorized"}, status_code=HTTPStatus.UNAUTHORIZED)
 
@@ -86,6 +97,8 @@ class Control4CommandsView(_BridgeBaseView):
 
     async def get(self, request):
         hass = request.app["hass"]
+        if not self._domain_data(hass):
+            return self.json({"ok": False, "error": "integration_not_ready"}, status_code=HTTPStatus.SERVICE_UNAVAILABLE)
         if not self._is_authorized(hass, request.headers):
             return self.json({"ok": False, "error": "unauthorized"}, status_code=HTTPStatus.UNAUTHORIZED)
 
@@ -126,6 +139,8 @@ class Control4AckView(_BridgeBaseView):
 
     async def post(self, request):
         hass = request.app["hass"]
+        if not self._domain_data(hass):
+            return self.json({"ok": False, "error": "integration_not_ready"}, status_code=HTTPStatus.SERVICE_UNAVAILABLE)
         if not self._is_authorized(hass, request.headers):
             return self.json({"ok": False, "error": "unauthorized"}, status_code=HTTPStatus.UNAUTHORIZED)
 
